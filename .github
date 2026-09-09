@@ -1,0 +1,63 @@
+name: Build MU Titan 97D BotEngine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    name: Build GameServer.exe and Main.dll
+    runs-on: windows-2019
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Show MSBuild version
+        shell: pwsh
+        run: msbuild -version
+
+      - name: Build GameServer Release Win32
+        shell: pwsh
+        run: |
+          msbuild "Source\MuServer\MuServer_Ex097.sln" /m /t:GameServer /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /p:PreferredToolArchitecture=x86 /flp:logfile=build_gameserver.log;verbosity=normal
+
+      - name: Build Main.dll Release Win32
+        shell: pwsh
+        run: |
+          msbuild "Source\Client\Client.sln" /m /t:Main /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /p:PreferredToolArchitecture=x86 /flp:logfile=build_main.log;verbosity=normal
+
+      - name: Collect build outputs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist" | Out-Null
+
+          $gameServer = Get-ChildItem -Path . -Recurse -Filter "GameServer.exe" |
+            Where-Object { $_.FullName -notmatch "\\obj\\" } |
+            Select-Object -First 1
+
+          $mainDll = Get-ChildItem -Path . -Recurse -Filter "Main.dll" |
+            Where-Object { $_.FullName -notmatch "\\obj\\" } |
+            Select-Object -First 1
+
+          if (-not $gameServer) { throw "GameServer.exe bulunamadi" }
+          if (-not $mainDll) { throw "Main.dll bulunamadi" }
+
+          Copy-Item $gameServer.FullName "dist\GameServer.exe" -Force
+          Copy-Item $mainDll.FullName "dist\Main.dll" -Force
+          Copy-Item "build_gameserver.log" "dist\build_gameserver.log" -Force -ErrorAction SilentlyContinue
+          Copy-Item "build_main.log" "dist\build_main.log" -Force -ErrorAction SilentlyContinue
+
+          Write-Host "Hazir: dist\GameServer.exe"
+          Write-Host "Hazir: dist\Main.dll"
+
+      - name: Upload compiled files
+        uses: actions/upload-artifact@v4
+        with:
+          name: MuTitan97D-BotEngine-v1-Compiled
+          path: dist/*
+          if-no-files-found: error
